@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { classCodeValid, teacherAuthorized } from "@/lib/server-auth";
-import { listLevel2Answers, saveLevel2Answers } from "@/lib/records";
+import { deleteLevel2Answer, listLevel2Answers, saveLevel2Answers } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
@@ -39,4 +39,19 @@ export async function POST(request: Request) {
     answers: body.answers as string[],
   });
   return NextResponse.json({ ok: true, answer: record }, { status: 201 });
+}
+
+/** Teacher-only removal of a single Level 2 response; never bulk-deletes. */
+export async function DELETE(request: Request) {
+  if (!teacherAuthorized(request)) {
+    return NextResponse.json({ error: "Instructor code not accepted." }, { status: 401 });
+  }
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id || id.length > 200) {
+    return NextResponse.json({ error: "A valid Level 2 record ID is required." }, { status: 400 });
+  }
+  if (!deleteLevel2Answer(id)) {
+    return NextResponse.json({ error: "Level 2 record not found." }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
 }

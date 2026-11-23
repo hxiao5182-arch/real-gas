@@ -166,3 +166,9 @@ export function listLevel2Answers(team: number): Level2Answer[] {
     : db.prepare("SELECT * FROM level2_answers ORDER BY updated_at DESC").all() as Level2Raw[];
   return rows.map(toLevel2);
 }
+
+/** Delete one Level 2 response by its unique ID. */
+export function deleteLevel2Answer(id: string): boolean {
+  const result = getDb().prepare("DELETE FROM level2_answers WHERE id = ?").run(id);
+  return result.changes > 0;
+}

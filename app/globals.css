@@ -154,3 +154,9 @@ html { color-scheme: light; }
 .level2-status p { flex: 1; }
 .teacher-repair { padding: 14px 18px 20px; }
 .teacher-repair .repair-station { padding: 0; }
+/* Teacher data deletion controls */
+.clear-button { margin-left: 10px; border: 1px solid #c6d6cc; background: #fff; color: #8a5a5a; border-radius: 6px; padding: 3px 9px; font-size: .78em; font-weight: 700; cursor: pointer; letter-spacing: .04em; }
+.clear-button:hover { background: #f7e4e4; border-color: #b97a7a; color: #a33b3b; }
+.lvl2-card time { display: inline-flex; align-items: center; gap: 8px; }
+.lvl2-card time .delete-button { width: 24px; height: 24px; opacity: .7; }
+.lvl2-card time .delete-button:hover { color: #ff9b9b; border-color: #724040; }
