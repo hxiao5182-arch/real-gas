@@ -33,14 +33,14 @@ npm run dev      # 开发模式
 
 - **Level 1 · Find the ideal zone**：CO₂ 温度/压强滑块、实时 Z 值与偏差、
   提交到班级数据墙（Peng–Robinson 计算）、证据集解锁（2 近理想 + 1 显著偏离）。
-- **Level 2 · Model Repair Station**：温度探究（4 步）+ 密度探究（3 步）、
+- **Level 2 · Why Do Real Gases Deviate?**：温度探究（4 题）+ 密度探究（4 题）、
   Canvas 粒子动画（吸引力箭头 / 有限分子体积放大粒子）、理想/模型压强读数、
   答题框与逐级提示。答案同时保存在当前标签页（sessionStorage）并自动同步到数据库，
-  教师端实时显示（各小组的 Temperature / Density 探究三题答案）。
+  教师端实时显示（各小组的 Temperature / Density 探究四题答案）。
 - **学生登录**：无需密码/班级码；选择 Group 1–12 并填写自己的姓名，提交记录按 Group + 姓名展示。
 - **教师端**：教师 PIN 登录，分两个 Tab——
   - `Level 1 · Data wall`：指标卡、温度-压强散点图、小组统计、明细表、暂停采集、冻结显示、全屏投影；
-  - `Level 2 · Model repair`：教师版探究界面演示（滑块、粒子动画、压强读数、步骤，不写入学生数据）+ 学生三题答案卡片。
+  - `Level 2 · Why Do Real Gases Deviate?`：教师版探究界面演示（滑块、粒子动画、压强读数、步骤，不写入学生数据）+ 学生四题答案卡片；旧三题记录保留原题标签。新旧记录分别保存，无需迁移数据库。
   - 两个 Tab 共用 **Group 筛选**，2 秒自动刷新。
 
 ## 验证记录

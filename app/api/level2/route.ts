@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ANSWER_LIMIT, LEVEL2_VERSION, validLevel2Draft } from "@/lib/level2";
 import { classCodeValid, teacherAuthorized } from "@/lib/server-auth";
 import { deleteLevel2Answer, listLevel2Answers, saveLevel2Answers } from "@/lib/records";
 
@@ -27,8 +28,12 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Check Team, Student or investigation." }, { status: 400 });
   }
-  if (!Array.isArray(body.answers) || body.answers.length > 3 ||
-      body.answers.some((a) => typeof a !== "string" || a.length > 4000)) {
+  const version = body.version === undefined ? 1 : body.version;
+  const answers = body.answers;
+  const valid = version === LEVEL2_VERSION ? validLevel2Draft(kind, answers) :
+    version === 1 && Array.isArray(answers) && answers.length <= 3 &&
+    answers.every((answer) => typeof answer === "string" && answer.length <= ANSWER_LIMIT);
+  if (!valid || (version !== 1 && version !== LEVEL2_VERSION)) {
     return NextResponse.json({ error: "Check answer format." }, { status: 400 });
   }
   const record = saveLevel2Answers({
@@ -36,7 +41,8 @@ export async function POST(request: Request) {
     teamId,
     studentCode,
     kind,
-    answers: body.answers as string[],
+    version,
+    answers: answers as string[],
   });
   return NextResponse.json({ ok: true, answer: record }, { status: 201 });
 }

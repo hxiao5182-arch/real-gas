@@ -1,4 +1,5 @@
 import { getDb } from "@/db";
+import { LEVEL2_VERSION, type InvestigationKind } from "@/lib/level2";
 
 export type SubmissionRow = {
   id: string;
@@ -101,7 +102,8 @@ export type Level2Answer = {
   id: string;
   teamId: number;
   studentCode: string;
-  kind: "temperature" | "density";
+  kind: InvestigationKind;
+  version: 1 | typeof LEVEL2_VERSION;
   answers: string[];
   updatedAt: number;
 };
@@ -129,6 +131,7 @@ function toLevel2(row: Level2Raw): Level2Answer {
     teamId: row.team_id,
     studentCode: row.student_code,
     kind: row.kind === "density" ? "density" : "temperature",
+    version: row.id.endsWith(":v" + LEVEL2_VERSION) ? LEVEL2_VERSION : 1,
     answers,
     updatedAt: row.updated_at,
   };
@@ -138,10 +141,12 @@ export function saveLevel2Answers(input: {
   classCode: string;
   teamId: number;
   studentCode: string;
-  kind: "temperature" | "density";
+  kind: InvestigationKind;
+  version: 1 | typeof LEVEL2_VERSION;
   answers: string[];
 }): Level2Answer {
-  const id = `${input.classCode}:${input.teamId}:${input.studentCode}:${input.kind}`;
+  const legacyId = `${input.classCode}:${input.teamId}:${input.studentCode}:${input.kind}`;
+  const id = input.version === 1 ? legacyId : legacyId + ":v" + input.version;
   const updatedAt = Date.now();
   const answers = JSON.stringify(input.answers);
   getDb()
@@ -154,6 +159,7 @@ export function saveLevel2Answers(input: {
     teamId: input.teamId,
     studentCode: input.studentCode,
     kind: input.kind,
+    version: input.version,
     answers: input.answers,
     updatedAt,
   };

@@ -3,37 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { repairPressure } from "@/lib/real-gas";
 
-type Question = { title: string; prompt: string; hints?: string[]; firstHint?: number };
-type Step = { title: string; instruction: string; attractions: boolean; finite: boolean; question?: Question };
-
-const investigations: Record<"temperature" | "density", Step[]> = {
-  temperature: [
-    { title: "Set the Model", instruction: 'Turn ON "Include intermolecular attractions" and turn OFF "Include finite molecular volume".', attractions: true, finite: false },
-    { title: "Change Temperature", instruction: "Move the temperature slider from low to high and observe the percentage deviation.", attractions: true, finite: false, question: {
-      title: "Observation", prompt: "When only intermolecular attractions are included, how does increasing temperature affect the percentage deviation from ideal pressure?",
-    } },
-    { title: "Observe Particle Motion", instruction: "Watch how particle motion changes as temperature increases.", attractions: true, finite: false, question: {
-      title: "Particle Motion", prompt: "According to KMT, what changes in the motion of gas particles as temperature increases?", hints: ["Think about the relationship between temperature, average kinetic energy, and particle speed."], firstHint: 1,
-    } },
-    { title: "Explain", instruction: "Connect your particle-motion observations to the pressure deviation in Q1.", attractions: true, finite: false, question: {
-      title: "Explanation", prompt: "How can the change in particle motion explain the pressure deviation observed in Question 1?", hints: [
-        "How can intermolecular attractions change the speed and direction of a moving particle?",
-        "At the same attractive force, faster particles have less time to be slowed down, so the change in velocity is smaller.",
-      ], firstHint: 2,
-    } },
-  ],
-  density: [
-    { title: "Change Density", instruction: "Turn OFF both corrections, then increase the gas density and observe particle spacing.", attractions: false, finite: false, question: {
-      title: "Observation", prompt: "As gas density increases, what happens to the average distance between particles?", hints: ["Think about the same number of particles occupying less space."], firstHint: 1,
-    } },
-    { title: "Test Attractions", instruction: 'Turn ON "Include intermolecular attractions" only, then increase the density again.', attractions: true, finite: false, question: {
-      title: "Intermolecular Attractions", prompt: "Why do intermolecular attractions become more important at higher gas densities?", hints: ["How does the attractive force between nearby particles change as their separation decreases?"], firstHint: 2,
-    } },
-    { title: "Test Molecular Volume", instruction: 'Turn OFF attractions and turn ON "Include finite molecular volume", then increase the density again.', attractions: false, finite: true, question: {
-      title: "Molecular Volume", prompt: "Why can the volume occupied by gas particles no longer be ignored at higher gas densities?", hints: ["When particles are closer together, does their own volume become a larger or smaller fraction of the container?"], firstHint: 3,
-    } },
-  ],
-};
+import { ANSWER_LIMIT, choices, investigations, LEVEL2_TITLE, LEVEL2_VERSION, validLevel2Draft } from "@/lib/level2";
 
 function RevealHints({ hints, first }: { hints: string[]; first: number }) {
   const [visible, setVisible] = useState(0);
@@ -172,15 +142,15 @@ type StudentIdentity = { classCode: string; teamId: number; studentCode: string 
 
 function Investigation({ kind, active, draftKey, session, demo = false }: { kind: keyof typeof investigations; active: boolean; draftKey: string; session: StudentIdentity; demo?: boolean }) {
   const thermal = kind === "temperature";
-  const [value, setValue] = useState(thermal ? 300 : 0.125);
-  const [attractions, setAttractions] = useState(thermal);
+  const steps = investigations[kind];
+  const [value, setValue] = useState(thermal ? 600 : 0.125);
+  const [attractions, setAttractions] = useState(steps[0].attractions);
   const [finite, setFinite] = useState(false);
   const [paused, setPaused] = useState(false);
   const [answers, setAnswers] = useState<string[]>([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [finished, setFinished] = useState(false);
-  const steps = investigations[kind];
-  const step = steps[stepIndex];
+  const question = steps[stepIndex];
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const focusNextStep = useRef(false);
   useEffect(() => {
@@ -188,48 +158,67 @@ function Investigation({ kind, active, draftKey, session, demo = false }: { kind
     focusNextStep.current = false;
     stepHeading.current?.focus({ preventScroll: true });
   }, [stepIndex]);
-  const question = step.question;
-  const answerIndex = thermal ? stepIndex - 1 : stepIndex;
-  const key = draftKey + ":" + kind;
+  const complete = validLevel2Draft(kind, answers) && answers.every((answer) => answer.trim());
+  const key = draftKey + ":" + kind + ":v" + LEVEL2_VERSION;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef(Promise.resolve());
+  const saveRevision = useRef(0);
   const [saveState, setSaveState] = useState("");
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
-  function saveAnswers(next: string[]) {
+
+  function saveAnswers(next: string[], delay = 500) {
     if (demo) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    const revision = ++saveRevision.current;
     setSaveState("Saving…");
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const response = await fetch("/api/level2", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            classCode: session.classCode,
-            teamId: session.teamId,
-            studentCode: session.studentCode,
-            kind,
-            answers: next,
-          }),
-        });
-        setSaveState(response.ok ? "Saved to class wall" : "Save failed");
-      } catch {
-        setSaveState("Save failed");
-      }
-    }, 500);
+    saveTimer.current = setTimeout(() => {
+      saveQueue.current = saveQueue.current.then(async () => {
+        if (revision !== saveRevision.current) return;
+        let saved = false;
+        try {
+          const response = await fetch("/api/level2", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...session, kind, version: LEVEL2_VERSION, answers: next }),
+          });
+          saved = response.ok;
+        } catch {
+          // The browser draft remains available for a retry.
+        }
+        if (revision === saveRevision.current) setSaveState(saved ? "Saved to class wall" : "Save failed");
+      });
+    }, delay);
   }
+
+  function updateAnswer(value: string) {
+    const next = steps.map((_, index) => index === stepIndex ? value : (answers[index] ?? ""));
+    setAnswers(next);
+    setFinished(false);
+    sessionStorage.setItem(key, JSON.stringify(next));
+    saveAnswers(next);
+  }
+
   function goTo(index: number) {
     focusNextStep.current = true;
     setStepIndex(index);
     setFinished(false);
     setAttractions(steps[index].attractions);
     setFinite(steps[index].finite);
-    if ((!thermal && index > 0) || (thermal && index === 1)) setValue(thermal ? 300 : 0.125);
+    setValue(thermal ? (index < 2 ? 600 : 300) : 0.125);
   }
+
   useEffect(() => {
     const saved = sessionStorage.getItem(key);
-    if (saved) setAnswers(JSON.parse(saved));
+    if (saved) {
+      try {
+        const draft: unknown = JSON.parse(saved);
+        if (validLevel2Draft(kind, draft)) setAnswers(draft);
+      } catch {
+        // Ignore invalid browser drafts.
+      }
+    }
     setPaused(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, [key]);
+  }, [key, kind]);
   const vesselVolume = thermal ? 1 : 1 / value;
   const { ideal, model, deviation } = repairPressure(thermal ? value : 400, vesselVolume, attractions, finite);
   const unit = thermal ? "K" : "mol/L";
@@ -258,25 +247,33 @@ function Investigation({ kind, active, draftKey, session, demo = false }: { kind
     </dl>
     <p className="repair-note">Model predictions · Particle size illustrates the selected assumption.</p>
     <div className="repair-card repair-step" key={stepIndex}>
-      <h4 tabIndex={-1} ref={stepHeading}>Step {stepIndex + 1} of {steps.length} · {step.title}</h4>
-      <p>{step.instruction}</p>
-      {question && <div className="repair-questions repair-current-question">
-        <label><strong>Q{answerIndex + 1} · {question.title}</strong><span className="repair-prompt">{question.prompt}</span>
-          <textarea rows={3} value={answers[answerIndex] ?? ""} placeholder="Write your answer…" onChange={(e) => {
-            const next = Array.from({ length: 3 }, (_, i) => i === answerIndex ? e.target.value : (answers[i] ?? ""));
-            setAnswers(next);
-            sessionStorage.setItem(key, JSON.stringify(next));
-            saveAnswers(next);
-          }} />
-        </label>
-        {question.hints && question.firstHint !== undefined && <RevealHints hints={question.hints} first={question.firstHint} />}
-      </div>}
+      <h4 tabIndex={-1} ref={stepHeading}>Step {stepIndex + 1} of {steps.length} · {question.title}</h4>
+      <p>{question.instruction}</p>
+      <div className="repair-questions repair-current-question">
+        {question.choice ? <fieldset className="repair-options">
+          <legend><strong>Q{stepIndex + 1} · {question.title}</strong><span className="repair-prompt">{question.prompt}</span></legend>
+          {choices.map((choice) => <label key={choice}>
+            <input type="radio" name={key + ":" + stepIndex} value={choice} checked={answers[stepIndex] === choice} onChange={() => updateAnswer(choice)} />
+            {choice}
+          </label>)}
+        </fieldset> : <label>
+          <strong>Q{stepIndex + 1} · {question.title}</strong><span className="repair-prompt">{question.prompt}</span>
+          <textarea rows={3} maxLength={ANSWER_LIMIT} value={answers[stepIndex] ?? ""} placeholder="Write your answer…" onChange={(e) => updateAnswer(e.target.value)} />
+        </label>}
+        {question.hints && <RevealHints hints={question.hints} first={stepIndex === 2 ? 1 : 2} />}
+      </div>
       <div className="repair-step-actions">
         {stepIndex > 0 && <button type="button" onClick={() => goTo(stepIndex - 1)}>Previous step</button>}
         {stepIndex < steps.length - 1
           ? <button type="button" onClick={() => goTo(stepIndex + 1)}>Next step</button>
-          : <button type="button" onClick={() => { setFinished(true); saveAnswers(answers); }}>Finish investigation</button>}
-        {finished && <span role="status">{answers.filter((answer) => answer.trim()).length === 3 ? "Investigation complete · Answers saved and shared with the class data wall." : "Complete all three answers. Use Previous step to revisit earlier questions."}</span>}
+          : <button type="button" onClick={() => { setFinished(true); if (complete) saveAnswers(answers, 0); }}>Finish investigation</button>}
+        {finished && <span role="status">{
+          !complete ? "Complete all four answers. Use Previous step to revisit earlier questions." :
+          demo ? "Investigation complete." :
+          saveState === "Saved to class wall" ? "Investigation complete · Answers saved and shared with the class data wall." :
+          saveState === "Save failed" ? "Answers could not be shared. Select Finish investigation to try again." :
+          "Sharing answers…"
+        }</span>}
       </div>
     </div>
     <p className="repair-note">Answers stay in this browser tab and are shared with the teacher data wall. {saveState && <span className="repair-save-status">{saveState}</span>}</p>
@@ -286,7 +283,7 @@ function Investigation({ kind, active, draftKey, session, demo = false }: { kind
 export default function ModelRepair({ draftKey, session, demo = false }: { draftKey: string; session: StudentIdentity; demo?: boolean }) {
   const [kind, setKind] = useState<keyof typeof investigations>("temperature");
   return <div className="repair-station">
-    <header><p>LEVEL 02</p><h2>Model Repair Station</h2></header>
+    <header><p>LEVEL 02</p><h2>{LEVEL2_TITLE}</h2></header>
     <nav aria-label="Choose an investigation">
       <button aria-pressed={kind === "temperature"} onClick={() => setKind("temperature")}>Temperature</button>
       <button aria-pressed={kind === "density"} onClick={() => setKind("density")}>Density</button>
